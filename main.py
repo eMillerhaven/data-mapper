@@ -10,17 +10,20 @@ from bakery import assert_equal
 # =====================================================================
 
 hide_debug_information()
-set_website_title("Geospatial Field & Analytics Explorer")
+set_website_title("Data Mapper")
 set_website_framed(False)
 
+
+# Used AI to learn about Drafter's CSS styling functions and style arguments and implement them for page layout
 add_website_css("h1", "font-size: 1rem; margin-bottom: 0.4rem;")
 add_website_css("h3", "font-size: 0.75rem; margin-bottom: 0.25rem;")
+
 set_site_information(
     "Evan Miller",
-    "Interactive geospatial data mapping, distance analysis, and plotting.",
+    "Interactive data mapping, distance analysis, and plotting.",
     "OpenStreetMap via Drafter; sample Newark field datasets.",
     "See planning.pdf in the GitHub repository.",
-    ["https://github.com/your-username/your-repo-name"],
+    ["https://emillerhaven.github.io/data-mapper/"],
 )
 
 EARTH_RADIUS_KM: float = 6371.0
@@ -37,8 +40,8 @@ MONTH_NAMES: list[str] = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun",
     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ]
-AG_FARM_LAT: float = 39.6695
-AG_FARM_LON: float = -75.7441
+AG_FARM_LAT: float = 39.6682
+AG_FARM_LON: float = -75.7457
 
 NEWARK_AG_FARM_CSV: str = (
     "Month,MAX TEMP (F),MIN TEMP (F),AVG TEMP (F),PRECIP (IN)\n"
@@ -56,6 +59,24 @@ NEWARK_AG_FARM_CSV: str = (
     "Dec,47.0,29.8,38.4,4.04\n"
 )
 
+WILMINGTON_LAT: float = 39.6787
+WILMINGTON_LON: float = -75.6065
+
+WILMINGTON_CSV: str = (
+    "Month,MAX TEMP (F),MIN TEMP (F),AVG TEMP (F),PRECIP (IN),SNOW (IN)\n"
+    "Jan,41.4,25.6,33.5,3.23,6.1\n"
+    "Feb,44.1,27.0,35.5,2.83,7.8\n"
+    "Mar,52.5,33.9,43.2,4.16,3.1\n"
+    "Apr,64.2,43.5,53.9,3.51,0.1\n"
+    "May,73.5,53.4,63.5,3.57,0.0\n"
+    "Jun,82.2,63.0,72.6,4.67,0.0\n"
+    "Jul,86.8,68.3,77.6,4.41,0.0\n"
+    "Aug,84.9,66.6,75.8,3.98,0.0\n"
+    "Sep,78.5,59.3,68.9,4.38,0.0\n"
+    "Oct,67.0,47.3,57.2,3.68,0.0\n"
+    "Nov,55.9,37.4,46.6,3.06,0.2\n"
+    "Dec,46.0,30.3,38.2,3.85,2.9\n"
+)
 
 # =====================================================================
 # 2. DATACLASSES (DATA MODEL & APPLICATION STATE)
@@ -86,7 +107,7 @@ class SelectedPoint:
 
 @dataclass
 class GraphConfig:
-    dataset_index: int | None
+    dataset_indices: list[int]
     x_field: str
     y_field: str
     plot_type: str
@@ -111,33 +132,38 @@ class State:
     last_distance: DistanceQuery | None
     table_sort_by: str
     table_sort_reverse: bool
+    pending_delete_index: int | None
 
 
 # =====================================================================
 # 3. SHARED NAVIGATION & INITIAL STATE HELPERS
 # =====================================================================
 
-
-def build_nav_bar() -> Row:
-    """Create the top navigation bar shared across all pages."""
-    return Row(
+def build_nav_bar() -> Div:
+    """Create the top navigation bar split across two clean rows."""
+    row_one = Row(
         Link("Map Explorer", "index"),
         Link("Add Data Point", "add_point_page"),
         Link("Import File", "upload_file_page"),
         Link("View Graph", "view_graph_page"),
-        Link("Graph Settings", "graph_settings_page"),
-        Link("Data Table", "data_table_page"),
         style_gap="12px",
     )
+    row_two = Row(
+        Link("Graph Settings", "graph_settings_page"),
+        Link("Data Table", "data_table_page"),
+        Link("Remove Datasets", "remove_datasets_page"),
+        style_gap="12px",
+    )
+    return Div(row_one, row_two)
 
 
 def build_status_banner(state: State) -> Paragraph:
     """Render the current status message consistently across pages."""
-    return Paragraph(f"Status: {state.status_message}")
+    return Paragraph("Status: " + state.status_message)
 
 
 def make_initial_state() -> State:
-    """Build initial State with the four Newark AG Farm climate datasets."""
+    """Build initial State with Newark AG Farm and Wilmington datasets."""
     datasets = [
         parse_text_to_dataset(
             NEWARK_AG_FARM_CSV,
@@ -171,12 +197,55 @@ def make_initial_state() -> State:
             AG_FARM_LAT,
             AG_FARM_LON,
         ),
+        parse_text_to_dataset(
+            WILMINGTON_CSV,
+            "Wilmington High Temps",
+            0,
+            1,
+            WILMINGTON_LAT,
+            WILMINGTON_LON,
+        ),
+        parse_text_to_dataset(
+            WILMINGTON_CSV,
+            "Wilmington Low Temps",
+            0,
+            2,
+            WILMINGTON_LAT,
+            WILMINGTON_LON,
+        ),
+        parse_text_to_dataset(
+            WILMINGTON_CSV,
+            "Wilmington Average Temps",
+            0,
+            3,
+            WILMINGTON_LAT,
+            WILMINGTON_LON,
+        ),
+        parse_text_to_dataset(
+            WILMINGTON_CSV,
+            "Wilmington Precipitation(in)",
+            0,
+            4,
+            WILMINGTON_LAT,
+            WILMINGTON_LON,
+        ),
+        parse_text_to_dataset(
+            WILMINGTON_CSV,
+            "Wilmington Snow(in)",
+            0,
+            5,
+            WILMINGTON_LAT,
+            WILMINGTON_LON,
+        ),
     ]
-    for ds in datasets:
-        ds.notes = "Newark AG Farm monthly climate normals"
+    for idx in range(len(datasets)):
+        if idx < 4:
+            datasets[idx].notes = "Newark AG Farm monthly climate normals"
+        else:
+            datasets[idx].notes = "Wilmington monthly climate normals"
 
     default_graph = GraphConfig(
-        dataset_index=None,
+        dataset_indices=[],
         x_field="date",
         y_field="value",
         plot_type="line",
@@ -188,10 +257,14 @@ def make_initial_state() -> State:
         datasets=datasets,
         selected=None,
         graph_config=default_graph,
-        status_message="Welcome! Click a map marker or explore the tools.",
+        status_message=(
+            "Welcome! Loaded example NewarkAGFarm and Wilmington datasets — "
+            "click a map marker or explore the tools."
+        ),
         last_distance=None,
         table_sort_by="name",
         table_sort_reverse=False,
+        pending_delete_index=None,
     )
 
 
@@ -228,9 +301,13 @@ def build_map_markers(datasets: list[Dataset]) -> list[MapMarker]:
 def build_layer_toggles(datasets: list[Dataset]) -> list[PageContent]:
     """Build toggle buttons for showing or hiding each dataset layer."""
     controls: list[PageContent] = [Header("Dataset Layers", 3)]
-    for idx, ds in enumerate(datasets):
-        state_label = "ON" if ds.toggled else "OFF"
-        btn_text = f"{ds.name}: {state_label}"
+    for idx in range(len(datasets)):
+        ds = datasets[idx]
+        if ds.toggled:
+            state_label = "ON"
+        else:
+            state_label = "OFF"
+        btn_text = ds.name + ": " + state_label
         controls.append(
             Button(btn_text, "toggle_dataset", Argument("dataset_idx", idx))
         )
@@ -238,35 +315,36 @@ def build_layer_toggles(datasets: list[Dataset]) -> list[PageContent]:
 
 
 def build_side_panel(state: State) -> Div:
-    """Build the right-hand panel containing title, nav, status, and toggles."""
-    distance_box: list[PageContent] = []
-    if state.last_distance is not None:
-        dq = state.last_distance
-        distance_box.append(
-            Paragraph(
-                f"Distance from {dq.start} to {dq.end}: {dq.distance} km"
-            )
-        )
-
+    """Build the right-hand panel containing title, nav, and status."""
     panel_items: list[PageContent] = [
-        Header("Geospatial Field Explorer"),
+        Header("Data Mapper"),
         build_nav_bar(),
         HorizontalRule(),
-        Paragraph(f"Status: {state.status_message}"),
-        *distance_box,
-        *build_layer_toggles(state.datasets),
+        Paragraph("Status: " + state.status_message),
     ]
+    if state.last_distance is not None:
+        dq = state.last_distance
+        dist_text = (
+            "Distance from "
+            + dq.start
+            + " to "
+            + dq.end
+            + ": "
+            + str(dq.distance)
+            + " km"
+        )
+        panel_items.append(Paragraph(dist_text))
+
     return Div(
-        *panel_items,
+        panel_items,
         style_width="50%",
         style_padding="16px",
-        style_box_sizing="border-box",
     )
 
 
 @route
 def index(state: State) -> Page:
-    """Render the main Map Explorer with a 50/50 split layout."""
+    """Render the main Map Explorer with layer toggles below the map."""
     markers = build_map_markers(state.datasets)
     map_view = Map(
         "field_map",
@@ -276,13 +354,17 @@ def index(state: State) -> Page:
         on_marker_click="inspect_marker",
         on_click="handle_map_click",
         style_width="100%",
-        style_height="85vh",
+        style_height="450px",
     )
+    left_items: list[PageContent] = [map_view]
+    toggles = build_layer_toggles(state.datasets)
+    for item in toggles:
+        left_items.append(item)
+
     left_column = Div(
-        map_view,
+        left_items,
         style_width="50%",
         style_padding="8px",
-        style_box_sizing="border-box",
     )
     right_column = build_side_panel(state)
 
@@ -292,7 +374,6 @@ def index(state: State) -> Page:
             Row(
                 left_column,
                 right_column,
-                style_align_items="flex-start",
                 style_width="100%",
             )
         ],
@@ -304,7 +385,12 @@ def toggle_dataset(state: State, dataset_idx: int) -> Page:
     """Toggle visibility on or off and report live visible counts."""
     target = state.datasets[dataset_idx]
     target.toggled = not target.toggled
-    visible_sets = sum(1 for ds in state.datasets if ds.toggled)
+
+    visible_sets = 0
+    for ds in state.datasets:
+        if ds.toggled:
+            visible_sets += 1
+
     visible_pts = len(build_map_markers(state.datasets))
     if visible_sets == 0:
         state.status_message = (
@@ -312,8 +398,13 @@ def toggle_dataset(state: State, dataset_idx: int) -> Page:
         )
     else:
         state.status_message = (
-            f"Showing {visible_sets} of {len(state.datasets)} datasets "
-            f"({visible_pts} markers on map)."
+            "Showing "
+            + str(visible_sets)
+            + " of "
+            + str(len(state.datasets))
+            + " datasets ("
+            + str(visible_pts)
+            + " markers on map)."
         )
     return index(state)
 
@@ -325,6 +416,7 @@ def clear_selection(state: State) -> Page:
     state.last_distance = None
     state.status_message = "Selection cleared. Click a marker to inspect."
     return index(state)
+
 
 @route
 def handle_map_click(
@@ -339,9 +431,17 @@ def handle_map_click(
     ds = state.datasets[state.selected.dataset_index]
     pt = ds.datapoints[state.selected.data_index]
     dist_km = haversine_km(pt.latitude, pt.longitude, latitude, longitude)
-    end_label = f"Click ({round(latitude, 4)}, {round(longitude, 4)})"
+    end_label = (
+        "Click ("
+        + str(round(latitude, 4))
+        + ", "
+        + str(round(longitude, 4))
+        + ")"
+    )
     state.last_distance = DistanceQuery(pt.name, end_label, dist_km)
-    state.status_message = f"Measured {dist_km} km from {pt.name}."
+    state.status_message = (
+        "Measured " + str(dist_km) + " km from " + pt.name + "."
+    )
     return index(state)
 
 
@@ -358,18 +458,59 @@ def is_valid_coords(lat: float, lon: float) -> bool:
 def inspect_marker(
     state: State, latitude: float, longitude: float, label: str
 ) -> Page:
-    """Locate clicked marker in state and render its detail page."""
-    for d_idx, ds in enumerate(state.datasets):
-        for p_idx, pt in enumerate(ds.datapoints):
-            if pt.name == label:
-                state.selected = SelectedPoint(d_idx, p_idx)
-                state.status_message = (
-    f"Inspecting '{pt.name}' ({pt.value}) — "
-    "return to Map Explorer to measure distances from it."
-)
-                return point_detail_page(state)
-    state.status_message = "Marker record could not be located."
-    return index(state)
+    """Open Data Table if multiple points share coordinates, else Detail Page."""
+    clicked_pt: Data | None = None
+    clicked_loc: SelectedPoint | None = None
+
+    for d_idx in range(len(state.datasets)):
+        ds = state.datasets[d_idx]
+        for p_idx in range(len(ds.datapoints)):
+            pt = ds.datapoints[p_idx]
+            if pt.name == label and clicked_pt is None:
+                clicked_pt = pt
+                clicked_loc = SelectedPoint(d_idx, p_idx)
+
+    if clicked_pt is None or clicked_loc is None:
+        state.status_message = "Marker record could not be located."
+        return index(state)
+
+    state.selected = clicked_loc
+    matching_datasets: list[int] = []
+    match_count = 0
+
+    for d_idx in range(len(state.datasets)):
+        ds = state.datasets[d_idx]
+        for pt in ds.datapoints:
+            if (
+                pt.latitude == clicked_pt.latitude
+                and pt.longitude == clicked_pt.longitude
+            ):
+                if d_idx not in matching_datasets:
+                    matching_datasets.append(d_idx)
+                match_count += 1
+
+    if match_count > 1:
+        for d_idx in range(len(state.datasets)):
+            state.datasets[d_idx].toggled = d_idx in matching_datasets
+        state.status_message = (
+            "Found "
+            + str(match_count)
+            + " points at ("
+            + str(clicked_pt.latitude)
+            + ", "
+            + str(clicked_pt.longitude)
+            + ") — showing matching dataset(s) in table."
+        )
+        return data_table_page(state)
+
+    state.status_message = (
+        "Inspecting '"
+        + clicked_pt.name
+        + "' ("
+        + str(clicked_pt.value)
+        + ") — return to Map Explorer to measure distances from it."
+    )
+    return point_detail_page(state)
 
 
 @route
@@ -399,11 +540,11 @@ def point_detail_page(state: State) -> Page:
     return Page(
         state,
         [
-            Header(f"Station: {pt.name}"),
+            Header("Station: " + pt.name),
             build_nav_bar(),
             details,
             Paragraph("Click anywhere on the Map Explorer to measure from here."),
-            Button("Return to Map", "index"),
+            Button("Return to Map", "return_to_map"),
         ],
     )
 
@@ -415,8 +556,11 @@ def return_to_map(state: State) -> Page:
         ds = state.datasets[state.selected.dataset_index]
         pt = ds.datapoints[state.selected.data_index]
         state.status_message = (
-            f"Active anchor: {pt.name} ({pt.value}). "
-            "Click map to measure distance."
+            "Active anchor: "
+            + pt.name
+            + " ("
+            + str(pt.value)
+            + "). Click map to measure distance."
         )
     else:
         state.status_message = "Map Explorer ready."
@@ -426,7 +570,10 @@ def return_to_map(state: State) -> Page:
 @route
 def add_point_page(state: State) -> Page:
     """Render the form to manually add a new Data point."""
-    ds_names = [ds.name for ds in state.datasets]
+    ds_names: list[str] = []
+    for ds in state.datasets:
+        ds_names.append(ds.name)
+
     return Page(
         state,
         [
@@ -478,7 +625,9 @@ def save_point(
     for ds in state.datasets:
         if ds.name == dataset_name:
             ds.datapoints.append(new_pt)
-            state.status_message = f"Saved '{new_pt.name}' to {ds.name}."
+            state.status_message = (
+                "Saved '" + new_pt.name + "' to " + ds.name + "."
+            )
             return index(state)
 
     state.status_message = "Error: Target dataset not found."
@@ -487,15 +636,26 @@ def save_point(
 
 def parse_compact_row(line: str) -> tuple[str, list[float]]:
     """Parse a compact string without commas (e.g. 'Jan42.525.133.83.43')."""
-    label = line[:3] if len(line) >= 3 else "Row"
-    remainder = line[3:] if label in MONTH_NAMES else line
+    if len(line) >= 3:
+        label = line[:3]
+    else:
+        label = "Row"
+
+    if label in MONTH_NAMES:
+        remainder = line[3:]
+    else:
+        remainder = line
+
     nums: list[float] = []
     idx = 0
     while idx < len(remainder):
         dot_pos = remainder.find(".", idx)
         if dot_pos == -1:
             break
-        decimals = 2 if remainder.find(".", dot_pos + 1) == -1 else 1
+        if remainder.find(".", dot_pos + 1) == -1:
+            decimals = 2
+        else:
+            decimals = 1
         end_pos = min(dot_pos + 1 + decimals, len(remainder))
         try:
             nums.append(float(remainder[idx:end_pos]))
@@ -516,12 +676,16 @@ def parse_csv_row(
     except ValueError:
         return None
 
-    date_val = (
-        parts[date_col]
-        if 0 <= date_col < len(parts) and parts[date_col]
-        else "Unknown"
-    )
-    label_val = parts[0] if parts[0] else date_val
+    if 0 <= date_col < len(parts) and parts[date_col] != "":
+        date_val = parts[date_col]
+    else:
+        date_val = "Unknown"
+
+    if parts[0] != "":
+        label_val = parts[0]
+    else:
+        label_val = date_val
+
     return Data(
         name=label_val,
         value=num_val,
@@ -541,29 +705,32 @@ def parse_text_to_dataset(
 ) -> Dataset:
     """Convert raw CSV or compact text rows into a Dataset of Data objects."""
     points: list[Data] = []
-    for raw_line in raw_text.strip().splitlines():
+    lines = raw_text.strip().splitlines()
+    for raw_line in lines:
         clean_line = raw_line.strip()
-        if not clean_line:
+        if clean_line == "":
             continue
 
         if "," in clean_line:
-            parts = [token.strip() for token in clean_line.split(",")]
+            raw_parts = clean_line.split(",")
+            parts: list[str] = []
+            for token in raw_parts:
+                parts.append(token.strip())
             pt = parse_csv_row(parts, date_col, value_col)
             if pt is not None:
-                pt.name = f"{pt.name} ({dataset_name})"
+                pt.name = pt.name + " (" + dataset_name + ")"
                 pt.latitude = lat
                 pt.longitude = lon
                 points.append(pt)
         else:
             label, nums = parse_compact_row(clean_line)
             if len(nums) > 0:
-                # Compact format has Month at col 0 and numeric values starting at 1
                 num_idx = max(0, value_col - 1)
                 if num_idx >= len(nums):
                     num_idx = 0
                 points.append(
                     Data(
-                        name=f"{label} ({dataset_name})",
+                        name=label + " (" + dataset_name + ")",
                         value=nums[num_idx],
                         date=label,
                         latitude=lat,
@@ -582,14 +749,6 @@ def parse_text_to_dataset(
 @route
 def upload_file_page(state: State) -> Page:
     """Render the page to upload a .csv or .txt file into a new Dataset."""
-    column_options = [
-        "Col 1",
-        "Col 2",
-        "Col 3",
-        "Col 4",
-        "Col 5",
-    ]
-
     return Page(
         state,
         [
@@ -602,10 +761,10 @@ def upload_file_page(state: State) -> Page:
             ),
             Paragraph("New Dataset Name:"),
             TextBox("dataset_name", "Newark Monthly Climate"),
-            Paragraph("Which column should be assigned to Date:"),
-            SelectBox("date_choice", column_options, column_options[0]),
-            Paragraph("Which numeric column should be assigned to Value:"),
-            SelectBox("metric_choice", column_options, column_options[1]),
+            Paragraph("Column Number for Date (1 = first column):"),
+            TextBox("date_choice", "1"),
+            Paragraph("Column Number for Value (e.g. 2, 3, 4, 5):"),
+            TextBox("metric_choice", "2"),
             Paragraph("Default Latitude for points without coordinates:"),
             TextBox("lat", str(DEFAULT_LAT)),
             Paragraph("Default Longitude for points without coordinates:"),
@@ -625,96 +784,236 @@ def process_uploaded_file(
     metric_choice: str,
     lat: str,
     lon: str,
-    uploaded_file: bytes,
+    uploaded_file: str,
 ) -> Page:
-    """Decode uploaded file bytes, parse into Data instances, and save."""
+    """Parse an uploaded text/CSV file into Data instances and save."""
     try:
         num_lat = float(lat)
         num_lon = float(lon)
+        date_col = int(date_choice.strip()) - 1
+        value_col = int(metric_choice.strip()) - 1
     except ValueError:
-        state.status_message = "Error: Latitude and longitude must be numbers."
+        state.status_message = (
+            "Error: Coordinates and column numbers must be valid numbers."
+        )
+        return upload_file_page(state)
+
+    if date_col < 0 or value_col < 0:
+        state.status_message = "Error: Column numbers must be 1 or greater."
         return upload_file_page(state)
 
     if not is_valid_coords(num_lat, num_lon):
         state.status_message = "Error: Coordinates out of valid GPS bounds."
         return upload_file_page(state)
 
-    if not uploaded_file:
+    if uploaded_file == "":
         state.status_message = "Error: Please select a .csv or .txt file first."
         return upload_file_page(state)
 
-    raw_text = (
-        uploaded_file.decode("utf-8", errors="ignore")
-        if isinstance(uploaded_file, bytes)
-        else str(uploaded_file)
-    )
-    date_col = int(date_choice.replace("Col ", "")) - 1
-    value_col = int(metric_choice.replace("Col ", "")) - 1
-    clean_title = dataset_name.strip() or "Imported Dataset"
+    clean_title = dataset_name.strip()
+    if clean_title == "":
+        clean_title = "Imported Dataset"
+
     new_ds = parse_text_to_dataset(
-        raw_text, clean_title, date_col, value_col, num_lat, num_lon
+        uploaded_file, clean_title, date_col, value_col, num_lat, num_lon
     )
 
     if len(new_ds.datapoints) == 0:
         state.status_message = "Error: No valid numeric rows found in file."
         return upload_file_page(state)
 
+    for ds in state.datasets:
+        ds.toggled = False
+
+    new_ds.toggled = True
     state.datasets.append(new_ds)
     state.status_message = (
-        f"Imported '{new_ds.name}' with {len(new_ds.datapoints)} records."
+        "Imported '"
+        + new_ds.name
+        + "' with "
+        + str(len(new_ds.datapoints))
+        + " records (showing only this dataset)."
     )
     return data_table_page(state)
+
+
+@route
+def remove_datasets_page(state: State) -> Page:
+    """Render all datasets with single-click selection and confirmation."""
+    page_items: list[PageContent] = [
+        Header("Remove Datasets"),
+        build_nav_bar(),
+        build_status_banner(state),
+        Paragraph("Click a dataset below once to select it for removal:"),
+    ]
+
+    if len(state.datasets) == 0:
+        page_items.append(Paragraph("No datasets currently loaded."))
+        return Page(state, page_items)
+
+    for idx in range(len(state.datasets)):
+        ds = state.datasets[idx]
+        if state.pending_delete_index == idx:
+            prefix = "[Selected to Remove] "
+        else:
+            prefix = ""
+        btn_label = (
+            prefix
+            + ds.name
+            + " ("
+            + str(len(ds.datapoints))
+            + " pts)"
+        )
+        page_items.append(
+            Button(
+                btn_label,
+                "select_dataset_to_remove",
+                Argument("dataset_idx", idx),
+            )
+        )
+
+    if state.pending_delete_index is not None:
+        idx = state.pending_delete_index
+        if 0 <= idx < len(state.datasets):
+            target_name = state.datasets[idx].name
+            page_items.append(HorizontalRule())
+            page_items.append(
+                Paragraph(
+                    "Are you sure you want to permanently remove '"
+                    + target_name
+                    + "'?"
+                )
+            )
+            page_items.append(
+                Row(
+                    Button("Confirm Removal", "confirm_remove_dataset"),
+                    Button("Cancel", "cancel_remove_dataset"),
+                    style_gap="8px",
+                )
+            )
+
+    return Page(state, page_items)
+
+
+@route
+def select_dataset_to_remove(state: State, dataset_idx: int) -> Page:
+    """Mark a dataset as pending removal on first click."""
+    state.pending_delete_index = dataset_idx
+    ds_name = state.datasets[dataset_idx].name
+    state.status_message = (
+        "Selected '" + ds_name + "' — click Confirm Removal to delete."
+    )
+    return remove_datasets_page(state)
+
+
+@route
+def cancel_remove_dataset(state: State) -> Page:
+    """Cancel the pending dataset removal."""
+    state.pending_delete_index = None
+    state.status_message = "Dataset removal canceled."
+    return remove_datasets_page(state)
+
+
+@route
+def confirm_remove_dataset(state: State) -> Page:
+    """Remove the selected dataset from state and clean up saved indices."""
+    idx = state.pending_delete_index
+    if idx is None or idx < 0 or idx >= len(state.datasets):
+        state.pending_delete_index = None
+        state.status_message = "Error: No valid dataset selected to remove."
+        return remove_datasets_page(state)
+
+    removed_ds = state.datasets.pop(idx)
+    state.pending_delete_index = None
+
+    # Clean up active map anchor if its dataset was removed or shifted
+    if state.selected is not None:
+        if state.selected.dataset_index == idx:
+            state.selected = None
+            state.last_distance = None
+        elif state.selected.dataset_index > idx:
+            state.selected.dataset_index -= 1
+
+    # Clean up saved graph dataset indices if shifted or removed
+    updated_graph_indices: list[int] = []
+    for g_idx in state.graph_config.dataset_indices:
+        if g_idx < idx:
+            updated_graph_indices.append(g_idx)
+        elif g_idx > idx:
+            updated_graph_indices.append(g_idx - 1)
+    state.graph_config.dataset_indices = updated_graph_indices
+    if len(updated_graph_indices) == 0:
+        state.graph_config.is_configured = False
+
+    state.status_message = "Removed dataset '" + removed_ds.name + "'."
+    return remove_datasets_page(state)
 
 
 # =====================================================================
 # 6. GRAPH & ANALYTICS ACTION GROUP
 # =====================================================================
 
-
 def extract_axis_values(datapoints: list[Data], field: str) -> list:
     """Extract a list of values for a specific Data attribute."""
-    if field == "value":
-        return [pt.value for pt in datapoints]
-    if field == "date":
-        return [pt.date for pt in datapoints]
-    if field == "latitude":
-        return [pt.latitude for pt in datapoints]
-    if field == "longitude":
-        return [pt.longitude for pt in datapoints]
-    if field == "name":
-        return [pt.name for pt in datapoints]
-    return list(range(len(datapoints)))
+    results: list = []
+    for idx in range(len(datapoints)):
+        pt = datapoints[idx]
+        if field == "value":
+            results.append(pt.value)
+        elif field == "date":
+            results.append(pt.date)
+        elif field == "latitude":
+            results.append(pt.latitude)
+        elif field == "longitude":
+            results.append(pt.longitude)
+        elif field == "name":
+            results.append(pt.name)
+        else:
+            results.append(idx)
+    return results
 
 
 def build_analytics_figure(
     config: GraphConfig, datasets: list[Dataset]
 ) -> plt.Figure:
-    """Generate a Matplotlib figure for the single configured Dataset."""
+    """Generate a Matplotlib figure for all selected datasets."""
     plt.close("all")
     fig, ax = plt.subplots(figsize=(7, 4), layout="constrained")
-    ds = datasets[config.dataset_index]
-    x_vals = extract_axis_values(ds.datapoints, config.x_field)
-    y_vals = extract_axis_values(ds.datapoints, config.y_field)
 
-    if config.plot_type == "scatter":
-        ax.scatter(x_vals, y_vals, label=ds.name)
-    elif config.plot_type == "histogram":
-        ax.hist(y_vals, bins=5, alpha=0.7, label=ds.name)
+    names: list[str] = []
+    for idx in config.dataset_indices:
+        if 0 <= idx < len(datasets):
+            ds = datasets[idx]
+            names.append(ds.name)
+            x_vals = extract_axis_values(ds.datapoints, config.x_field)
+            y_vals = extract_axis_values(ds.datapoints, config.y_field)
+
+            if config.plot_type == "scatter":
+                ax.scatter(x_vals, y_vals, label=ds.name)
+            elif config.plot_type == "histogram":
+                ax.hist(y_vals, bins=5, alpha=0.6, label=ds.name)
+            else:
+                ax.plot(x_vals, y_vals, marker="o", label=ds.name)
+
+    if config.plot_title != "":
+        title = config.plot_title
+    elif len(names) == 1:
+        title = names[0] + ": " + config.y_field + " vs " + config.x_field
     else:
-        ax.plot(x_vals, y_vals, marker="o", label=ds.name)
+        title = (
+            "Dataset Comparison: "
+            + config.y_field
+            + " vs "
+            + config.x_field
+        )
 
-    default_title = f"{ds.name}: {config.y_field} vs {config.x_field}"
-    title = config.plot_title if config.plot_title else default_title
-    x_label = (
-        "Value Bins"
-        if config.plot_type == "histogram"
-        else config.x_field.capitalize()
-    )
-    y_label = (
-        "Frequency"
-        if config.plot_type == "histogram"
-        else config.y_field.capitalize()
-    )
+    if config.plot_type == "histogram":
+        x_label = "Value Bins"
+        y_label = "Frequency"
+    else:
+        x_label = config.x_field.capitalize()
+        y_label = config.y_field.capitalize()
+
     ax.set_title(title)
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
@@ -724,32 +1023,43 @@ def build_analytics_figure(
     return fig
 
 
-def build_dataset_summary(ds: Dataset, y_field: str) -> Table:
-    """Build a summary stats table for the plotted numeric attribute."""
-    vals = extract_axis_values(ds.datapoints, y_field)
-    if len(vals) == 0:
-        return Table([["Dataset", "Count"], [ds.name, "0"]])
-    mean_val = round(sum(vals) / len(vals), 2)
-    return Table(
-        [
-            ["Dataset", "Metric", "Count", "Min", "Max", "Mean"],
-            [
-                ds.name,
-                y_field,
-                str(len(vals)),
-                str(min(vals)),
-                str(max(vals)),
-                str(mean_val),
-            ],
-        ]
-    )
+def build_dataset_summary(
+    config: GraphConfig, datasets: list[Dataset]
+) -> Table:
+    """Build a summary stats table with one row per plotted dataset."""
+    rows: list[list[str]] = [
+        ["Dataset", "Metric", "Count", "Min", "Max", "Mean"]
+    ]
+    for idx in config.dataset_indices:
+        if 0 <= idx < len(datasets):
+            ds = datasets[idx]
+            vals = extract_axis_values(ds.datapoints, config.y_field)
+            if len(vals) == 0:
+                rows.append([ds.name, config.y_field, "0", "-", "-", "-"])
+            else:
+                mean_val = round(sum(vals) / len(vals), 2)
+                rows.append(
+                    [
+                        ds.name,
+                        config.y_field,
+                        str(len(vals)),
+                        str(min(vals)),
+                        str(max(vals)),
+                        str(mean_val),
+                    ]
+                )
+    return Table(rows)
 
 
 @route
 def view_graph_page(state: State) -> Page:
-    """Render the saved graph, or prompt the user to configure one first."""
+    """Render the saved graph, or prompt the user to configure one first.
+
+    Note: MatPlotLibPlot pixel output cannot be deeply compared in unit
+    tests, so tests verify Page creation and GraphConfig state instead.
+    """
     cfg = state.graph_config
-    if not cfg.is_configured or cfg.dataset_index is None:
+    if not cfg.is_configured or len(cfg.dataset_indices) == 0:
         return Page(
             state,
             [
@@ -757,14 +1067,13 @@ def view_graph_page(state: State) -> Page:
                 build_nav_bar(),
                 build_status_banner(state),
                 Paragraph(
-                    "No graph is currently loaded. Select a dataset and choose "
-                    "which data attributes to plot on the X and Y axes."
+                    "No graph is currently loaded. Select one or more datasets "
+                    "and choose which attributes to plot on the X and Y axes."
                 ),
-                Button("Configure Graph & Select Dataset", "graph_settings_page"),
+                Button("Configure Graph & Select Datasets", "graph_settings_page"),
             ],
         )
 
-    ds = state.datasets[cfg.dataset_index]
     build_analytics_figure(cfg, state.datasets)
     plot_component = MatPlotLibPlot()
 
@@ -775,7 +1084,7 @@ def view_graph_page(state: State) -> Page:
             build_nav_bar(),
             build_status_banner(state),
             plot_component,
-            build_dataset_summary(ds, cfg.y_field),
+            build_dataset_summary(cfg, state.datasets),
             Button("Edit Graph Settings", "graph_settings_page"),
         ],
     )
@@ -783,9 +1092,15 @@ def view_graph_page(state: State) -> Page:
 
 @route
 def select_graph_dataset(state: State, dataset_idx: int) -> Page:
-    """Set the single dataset index to be plotted."""
-    state.graph_config.dataset_index = dataset_idx
-    state.status_message = f"Selected dataset: {state.datasets[dataset_idx].name}"
+    """Toggle a dataset index on or off in the multi-dataset graph list."""
+    selected_list = state.graph_config.dataset_indices
+    ds_name = state.datasets[dataset_idx].name
+    if dataset_idx in selected_list:
+        selected_list.remove(dataset_idx)
+        state.status_message = "Removed '" + ds_name + "' from graph."
+    else:
+        selected_list.append(dataset_idx)
+        state.status_message = "Added '" + ds_name + "' to graph."
     return graph_settings_page(state)
 
 
@@ -797,23 +1112,42 @@ def select_graph_axis(state: State, axis: str, field: str) -> Page:
     else:
         state.graph_config.y_field = field
     state.status_message = (
-        f"Axis mapping set: X={state.graph_config.x_field}, "
-        f"Y={state.graph_config.y_field}"
+        "Axis mapping set: X="
+        + state.graph_config.x_field
+        + ", Y="
+        + state.graph_config.y_field
     )
     return graph_settings_page(state)
 
 
 @route
 def graph_settings_page(state: State) -> Page:
-    """Render buttons to pick dataset/axes and inputs for chart styling."""
+    """Render buttons to pick datasets/axes and inputs for chart styling."""
     cfg = state.graph_config
 
-    dataset_buttons: list[PageContent] = [Header("1. Choose Dataset (Single)", 3)]
-    for idx, ds in enumerate(state.datasets):
-        prefix = "[Selected] " if cfg.dataset_index == idx else ""
-        dataset_buttons.append(
+    page_items: list[PageContent] = [
+        Header("Graph Configuration"),
+        build_nav_bar(),
+        build_status_banner(state),
+        Header("1. Toggle Datasets to Plot (Select One or More)", 3),
+    ]
+
+    for idx in range(len(state.datasets)):
+        ds = state.datasets[idx]
+        if idx in cfg.dataset_indices:
+            prefix = "[Selected] "
+        else:
+            prefix = ""
+        label = (
+            prefix
+            + ds.name
+            + " ("
+            + str(len(ds.datapoints))
+            + " pts)"
+        )
+        page_items.append(
             Button(
-                f"{prefix}{ds.name} ({len(ds.datapoints)} pts)",
+                label,
                 "select_graph_dataset",
                 Argument("dataset_idx", idx),
             )
@@ -821,10 +1155,13 @@ def graph_settings_page(state: State) -> Page:
 
     x_buttons: list[PageContent] = [Header("2. Choose X-Axis Data", 3)]
     for field in X_AXIS_FIELDS:
-        prefix = "[X] " if cfg.x_field == field else ""
+        if cfg.x_field == field:
+            prefix = "[X] "
+        else:
+            prefix = ""
         x_buttons.append(
             Button(
-                f"{prefix}{field.capitalize()}",
+                prefix + field.capitalize(),
                 "select_graph_axis",
                 [Argument("axis", "x"), Argument("field", field)],
             )
@@ -832,37 +1169,37 @@ def graph_settings_page(state: State) -> Page:
 
     y_buttons: list[PageContent] = [Header("3. Choose Y-Axis Data", 3)]
     for field in Y_AXIS_FIELDS:
-        prefix = "[Y] " if cfg.y_field == field else ""
+        if cfg.y_field == field:
+            prefix = "[Y] "
+        else:
+            prefix = ""
         y_buttons.append(
             Button(
-                f"{prefix}{field.capitalize()}",
+                prefix + field.capitalize(),
                 "select_graph_axis",
                 [Argument("axis", "y"), Argument("field", field)],
             )
         )
 
-    return Page(
-        state,
-        [
-            Header("Graph Configuration"),
-            build_nav_bar(),
-            build_status_banner(state),
-            *dataset_buttons,
-            Row(*x_buttons, style_gap="8px"),
-            Row(*y_buttons, style_gap="8px"),
-            HorizontalRule(),
-            Header("4. Chart Style & Save", 3),
-            Paragraph("Plot Type:"),
-            SelectBox("plot_type", PLOT_TYPES, cfg.plot_type),
-            Paragraph("Custom Chart Title (leave blank for auto-title):"),
-            TextBox("plot_title", cfg.plot_title),
-            Row(
-                CheckBox("show_legend", cfg.show_legend),
-                Paragraph("Show Legend"),
-            ),
-            Button("Generate & Save Graph", "update_graph_settings"),
-        ],
+    page_items.append(Row(x_buttons, style_gap="8px"))
+    page_items.append(Row(y_buttons, style_gap="8px"))
+    page_items.append(HorizontalRule())
+    page_items.append(Header("4. Chart Style & Save", 3))
+    page_items.append(Paragraph("Plot Type:"))
+    page_items.append(SelectBox("plot_type", PLOT_TYPES, cfg.plot_type))
+    page_items.append(
+        Paragraph("Custom Chart Title (leave blank for auto-title):")
     )
+    page_items.append(TextBox("plot_title", cfg.plot_title))
+    page_items.append(
+        Row(
+            CheckBox("show_legend", cfg.show_legend),
+            Paragraph("Show Legend"),
+        )
+    )
+    page_items.append(Button("Generate & Save Graph", "update_graph_settings"))
+
+    return Page(state, page_items)
 
 
 @route
@@ -873,9 +1210,9 @@ def update_graph_settings(
     show_legend: bool,
 ) -> Page:
     """Validate dataset selection and save persistent graph configuration."""
-    if state.graph_config.dataset_index is None:
+    if len(state.graph_config.dataset_indices) == 0:
         state.status_message = (
-            "Error: Please select a dataset before generating the graph."
+            "Error: Please select at least one dataset before generating."
         )
         return graph_settings_page(state)
 
@@ -883,14 +1220,31 @@ def update_graph_settings(
     state.graph_config.plot_title = plot_title
     state.graph_config.show_legend = show_legend
     state.graph_config.is_configured = True
-    ds_name = state.datasets[state.graph_config.dataset_index].name
-    state.status_message = f"Saved graph for '{ds_name}'."
+    count = len(state.graph_config.dataset_indices)
+    state.status_message = (
+        "Saved graph with " + str(count) + " dataset(s)."
+    )
     return view_graph_page(state)
 
 
 # =====================================================================
 # 7. DATA TABLE ACTION GROUP
 # =====================================================================
+
+def get_record_value(item: tuple[str, Data]) -> float:
+    """Return the numeric value of a (dataset_name, Data) record for sorting."""
+    return item[1].value
+
+
+def get_record_date(item: tuple[str, Data]) -> str:
+    """Return the date string of a (dataset_name, Data) record for sorting."""
+    return item[1].date
+
+
+def get_record_name(item: tuple[str, Data]) -> str:
+    """Return the station name of a (dataset_name, Data) record for sorting."""
+    return item[1].name
+
 
 def get_sorted_rows(
     datasets: list[Dataset], sort_by: str, reverse: bool
@@ -903,11 +1257,11 @@ def get_sorted_rows(
                 records.append((ds.name, pt))
 
     if sort_by == "value":
-        records.sort(key=lambda item: item[1].value, reverse=reverse)
+        records.sort(key=get_record_value, reverse=reverse)
     elif sort_by == "date":
-        records.sort(key=lambda item: item[1].date, reverse=reverse)
+        records.sort(key=get_record_date, reverse=reverse)
     else:
-        records.sort(key=lambda item: item[1].name, reverse=reverse)
+        records.sort(key=get_record_name, reverse=reverse)
 
     rows: list[list[str]] = []
     for ds_name, pt in records:
@@ -923,19 +1277,24 @@ def get_sorted_rows(
         )
     return rows
 
+
 def build_table_layer_toggles(datasets: list[Dataset]) -> Row:
     """Build inline toggle buttons for showing or hiding datasets in the table."""
     buttons: list[PageContent] = []
-    for idx, ds in enumerate(datasets):
-        state_label = "ON" if ds.toggled else "OFF"
+    for idx in range(len(datasets)):
+        ds = datasets[idx]
+        if ds.toggled:
+            state_label = "ON"
+        else:
+            state_label = "OFF"
         buttons.append(
             Button(
-                f"{ds.name}: {state_label}",
+                ds.name + ": " + state_label,
                 "toggle_table_dataset",
                 Argument("dataset_idx", idx),
             )
         )
-    return Row(*buttons, style_gap="8px")
+    return Row(buttons, style_gap="8px")
 
 
 @route
@@ -943,18 +1302,27 @@ def toggle_table_dataset(state: State, dataset_idx: int) -> Page:
     """Toggle dataset visibility from the Data Table page and refresh."""
     target = state.datasets[dataset_idx]
     target.toggled = not target.toggled
-    visible_sets = sum(1 for ds in state.datasets if ds.toggled)
-    total_rows = sum(
-        len(ds.datapoints) for ds in state.datasets if ds.toggled
-    )
+
+    visible_sets = 0
+    total_rows = 0
+    for ds in state.datasets:
+        if ds.toggled:
+            visible_sets += 1
+            total_rows += len(ds.datapoints)
+
     if visible_sets == 0:
         state.status_message = (
             "All datasets hidden — toggle a dataset ON to view rows."
         )
     else:
         state.status_message = (
-            f"Showing {visible_sets} of {len(state.datasets)} datasets "
-            f"({total_rows} rows in table)."
+            "Showing "
+            + str(visible_sets)
+            + " of "
+            + str(len(state.datasets))
+            + " datasets ("
+            + str(total_rows)
+            + " rows in table)."
         )
     return data_table_page(state)
 
@@ -973,9 +1341,13 @@ def data_table_page(state: State) -> Page:
     )
     header_row = ["Dataset", "Station", "Value", "Date", "Latitude", "Longitude"]
 
-    table_display: PageContent
+    if state.table_sort_reverse:
+        order_label = "Desc"
+    else:
+        order_label = "Asc"
+
     if len(rows) == 0:
-        table_display = Paragraph(
+        table_display: PageContent = Paragraph(
             "No rows to display — toggle at least one dataset ON above."
         )
     else:
@@ -991,8 +1363,7 @@ def data_table_page(state: State) -> Page:
             build_table_layer_toggles(state.datasets),
             HorizontalRule(),
             Paragraph(
-                f"Sorted by: {state.table_sort_by} "
-                f"({'Desc' if state.table_sort_reverse else 'Asc'})"
+                "Sorted by: " + state.table_sort_by + " (" + order_label + ")"
             ),
             sort_controls,
             table_display,
@@ -1020,12 +1391,12 @@ assert_equal(is_valid_coords(39.68, -75.75), True)
 assert_equal(is_valid_coords(95.0, -75.75), False)
 
 test_state = make_initial_state()
-assert_equal(len(test_state.datasets), 4)
-assert_equal(len(build_map_markers(test_state.datasets)), 48)
+assert_equal(len(test_state.datasets), 9)
+assert_equal(len(build_map_markers(test_state.datasets)), 108)
 
 toggle_dataset(test_state, 1)
 assert_equal(test_state.datasets[1].toggled, False)
-assert_equal(len(build_map_markers(test_state.datasets)), 36)
+assert_equal(len(build_map_markers(test_state.datasets)), 96)
 
 save_point(
     test_state,
@@ -1044,7 +1415,7 @@ assert_equal(test_state.table_sort_reverse, False)
 
 toggle_table_dataset(test_state, 0)
 assert_equal(test_state.datasets[0].toggled, False)
-assert_equal(len(get_sorted_rows(test_state.datasets, "name", False)), 24)
+assert_equal(len(get_sorted_rows(test_state.datasets, "name", False)), 84)
 toggle_table_dataset(test_state, 0)
 assert_equal(test_state.datasets[0].toggled, True)
 
@@ -1062,7 +1433,13 @@ assert_equal(test_state.last_distance, None)
 
 assert_equal(test_state.graph_config.is_configured, False)
 select_graph_dataset(test_state, 0)
-assert_equal(test_state.graph_config.dataset_index, 0)
+select_graph_dataset(test_state, 1)
+assert_equal(test_state.graph_config.dataset_indices, [0, 1])
+
+select_graph_dataset(test_state, 1)
+assert_equal(test_state.graph_config.dataset_indices, [0])
+select_graph_dataset(test_state, 1)
+assert_equal(test_state.graph_config.dataset_indices, [0, 1])
 
 select_graph_axis(test_state, "x", "date")
 select_graph_axis(test_state, "y", "value")
@@ -1094,13 +1471,10 @@ assert_equal(len(parsed_compact_ds.datapoints), 2)
 assert_equal(parsed_compact_ds.datapoints[0].date, "Jan")
 assert_equal(parsed_compact_ds.datapoints[0].value, 42.5)
 
-# --- Additional Route Coverage Tests ---
+# Route tests verifying state updates
+index(test_state)
+assert_equal(len(test_state.datasets), 9)
 
-# 1. Test index route renders a Page
-index_page = index(test_state)
-assert_equal(isinstance(index_page, Page), True)
-
-# 2. Test handle_map_click when no point is selected
 test_state.selected = None
 handle_map_click(test_state, 39.6900, -75.7500)
 assert_equal(test_state.last_distance, None)
@@ -1108,22 +1482,33 @@ assert_equal(
     "Click a station marker first" in test_state.status_message, True
 )
 
-# 3. Test inspect_marker & point_detail_page
-detail_pg = inspect_marker(
+save_point(
+    test_state,
+    "NewarkAGFarm High Temps",
+    "Unique Station",
+    "70.0",
+    "2026-11-13",
+    "39.6850",
+    "-75.7550",
+)
+inspect_marker(
     test_state, AG_FARM_LAT, AG_FARM_LON, "Jan (NewarkAGFarm High Temps)"
 )
-assert_equal(isinstance(detail_pg, Page), True)
 assert_equal(test_state.selected, SelectedPoint(0, 0))
-assert_equal(isinstance(point_detail_page(test_state), Page), True)
+assert_equal("Found " in test_state.status_message, True)
 
-# 4. Test handle_map_click with an active selected anchor
+inspect_marker(test_state, 39.6850, -75.7550, "Unique Station")
+assert_equal(
+    "Inspecting 'Unique Station'" in test_state.status_message, True
+)
+point_detail_page(test_state)
+
 handle_map_click(test_state, 39.6900, -75.7500)
 assert_equal(test_state.last_distance is not None, True)
-assert_equal(test_state.last_distance.start, "Jan (NewarkAGFarm High Temps)")
+assert_equal(test_state.last_distance.start, "Unique Station")
 assert_equal(test_state.last_distance.distance > 0, True)
 
-# 5. Test add_point_page and save_point validation error branch
-assert_equal(isinstance(add_point_page(test_state), Page), True)
+add_point_page(test_state)
 save_point(
     test_state,
     "NewarkAGFarm High Temps",
@@ -1138,37 +1523,51 @@ assert_equal(
     True,
 )
 
-# 6. Test upload_file_page & process_uploaded_file (valid + empty file)
-assert_equal(isinstance(upload_file_page(test_state), Page), True)
+upload_file_page(test_state)
 process_uploaded_file(
-    test_state, "Empty Upload", "Col 1", "Col 2", "39.68", "-75.75", b""
+    test_state, "Empty Upload", "1", "2", "39.68", "-75.75", ""
 )
 assert_equal(
     "Please select a .csv or .txt file" in test_state.status_message,
     True,
 )
 
-csv_bytes = b"Month,MAX,MIN,AVG,PRECIP\nMar,54.2,32.8,43.5,4.27\n"
+csv_text = "Month,MAX,MIN,AVG,PRECIP\nMar,54.2,32.8,43.5,4.27\n"
 count_before = len(test_state.datasets)
 process_uploaded_file(
     test_state,
     "March Climate",
-    "Col 1",
-    "Col 5",
+    "1",
+    "5",
     "39.68",
     "-75.75",
-    csv_bytes,
+    csv_text,
 )
 assert_equal(len(test_state.datasets), count_before + 1)
 assert_equal(test_state.datasets[-1].name, "March Climate")
 assert_equal(test_state.datasets[-1].datapoints[0].value, 4.27)
 
-# 7. Test view_graph_page, graph_settings_page, and data_table_page
-assert_equal(isinstance(graph_settings_page(test_state), Page), True)
-assert_equal(isinstance(view_graph_page(test_state), Page), True)
-assert_equal(isinstance(data_table_page(test_state), Page), True)
+assert_equal(test_state.datasets[0].toggled, False)
+assert_equal(test_state.datasets[-1].toggled, True)
+assert_equal(len(get_sorted_rows(test_state.datasets, "name", False)), 1)
 
-start_server(make_initial_state())
+graph_settings_page(test_state)
+view_graph_page(test_state)
+data_table_page(test_state)
+
+remove_datasets_page(test_state)
+before_delete_count = len(test_state.datasets)
+select_dataset_to_remove(test_state, 0)
+assert_equal(test_state.pending_delete_index, 0)
+
+cancel_remove_dataset(test_state)
+assert_equal(test_state.pending_delete_index, None)
+assert_equal(len(test_state.datasets), before_delete_count)
+
+select_dataset_to_remove(test_state, 0)
+confirm_remove_dataset(test_state)
+assert_equal(test_state.pending_delete_index, None)
+assert_equal(len(test_state.datasets), before_delete_count - 1)
 
 
 start_server(make_initial_state())

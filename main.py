@@ -2,26 +2,24 @@ from dataclasses import dataclass
 import math
 import matplotlib.pyplot as plt
 from drafter import *
-from bakery import assert_equal
 
 
 # =====================================================================
 # 1. SITE CONFIGURATION & CONSTANTS
 # =====================================================================
 
-hide_debug_information()
 set_website_title("Data Mapper")
-set_website_framed(False)
-
+set_website_framed(True)
 
 # Used AI to learn about Drafter's CSS styling functions and style arguments and implement them for page layout
 add_website_css("h1", "font-size: 1rem; margin-bottom: 0.4rem;")
 add_website_css("h3", "font-size: 0.75rem; margin-bottom: 0.25rem;")
+add_website_css("#drafter-debug-panel", "display: none;")
 
 set_site_information(
     "Evan Miller",
     "Interactive data mapping, distance analysis, and plotting.",
-    "OpenStreetMap via Drafter; sample Newark field datasets.",
+    "OpenStreetMap via Drafter; sample Newark AG Farm and Wilmington climate datasets.",
     "See planning.pdf in the GitHub repository.",
     ["https://emillerhaven.github.io/data-mapper/"],
 )
@@ -298,9 +296,9 @@ def build_map_markers(datasets: list[Dataset]) -> list[MapMarker]:
     return markers
 
 
-def build_layer_toggles(datasets: list[Dataset]) -> list[PageContent]:
+def build_layer_toggles(datasets: list[Dataset]) -> list[Component]:
     """Build toggle buttons for showing or hiding each dataset layer."""
-    controls: list[PageContent] = [Header("Dataset Layers", 3)]
+    controls: list[Component] = [Header("Dataset Layers", 3)]
     for idx in range(len(datasets)):
         ds = datasets[idx]
         if ds.toggled:
@@ -316,7 +314,7 @@ def build_layer_toggles(datasets: list[Dataset]) -> list[PageContent]:
 
 def build_side_panel(state: State) -> Div:
     """Build the right-hand panel containing title, nav, and status."""
-    panel_items: list[PageContent] = [
+    panel_items: list[Component] = [
         Header("Data Mapper"),
         build_nav_bar(),
         HorizontalRule(),
@@ -356,7 +354,7 @@ def index(state: State) -> Page:
         style_width="100%",
         style_height="450px",
     )
-    left_items: list[PageContent] = [map_view]
+    left_items: list[Component] = [map_view]
     toggles = build_layer_toggles(state.datasets)
     for item in toggles:
         left_items.append(item)
@@ -375,6 +373,7 @@ def index(state: State) -> Page:
                 left_column,
                 right_column,
                 style_width="100%",
+                style_align_items="flex-start",
             )
         ],
     )
@@ -840,7 +839,7 @@ def process_uploaded_file(
 @route
 def remove_datasets_page(state: State) -> Page:
     """Render all datasets with single-click selection and confirmation."""
-    page_items: list[PageContent] = [
+    page_items: list[Component] = [
         Header("Remove Datasets"),
         build_nav_bar(),
         build_status_banner(state),
@@ -1027,7 +1026,7 @@ def build_dataset_summary(
     config: GraphConfig, datasets: list[Dataset]
 ) -> Table:
     """Build a summary stats table with one row per plotted dataset."""
-    rows: list[list[str]] = [
+    rows: list[list[Component | str | int | float | bool]] = [
         ["Dataset", "Metric", "Count", "Min", "Max", "Mean"]
     ]
     for idx in config.dataset_indices:
@@ -1125,7 +1124,7 @@ def graph_settings_page(state: State) -> Page:
     """Render buttons to pick datasets/axes and inputs for chart styling."""
     cfg = state.graph_config
 
-    page_items: list[PageContent] = [
+    page_items: list[Component] = [
         Header("Graph Configuration"),
         build_nav_bar(),
         build_status_banner(state),
@@ -1153,7 +1152,7 @@ def graph_settings_page(state: State) -> Page:
             )
         )
 
-    x_buttons: list[PageContent] = [Header("2. Choose X-Axis Data", 3)]
+    x_buttons: list[Component] = [Header("2. Choose X-Axis Data", 3)]
     for field in X_AXIS_FIELDS:
         if cfg.x_field == field:
             prefix = "[X] "
@@ -1163,11 +1162,11 @@ def graph_settings_page(state: State) -> Page:
             Button(
                 prefix + field.capitalize(),
                 "select_graph_axis",
-                [Argument("axis", "x"), Argument("field", field)],
+                (Argument("axis", "x"), Argument("field", field)),
             )
         )
 
-    y_buttons: list[PageContent] = [Header("3. Choose Y-Axis Data", 3)]
+    y_buttons: list[Component] = [Header("3. Choose Y-Axis Data", 3)]
     for field in Y_AXIS_FIELDS:
         if cfg.y_field == field:
             prefix = "[Y] "
@@ -1177,7 +1176,7 @@ def graph_settings_page(state: State) -> Page:
             Button(
                 prefix + field.capitalize(),
                 "select_graph_axis",
-                [Argument("axis", "y"), Argument("field", field)],
+                (Argument("axis", "y"), Argument("field", field)),
             )
         )
 
@@ -1248,7 +1247,7 @@ def get_record_name(item: tuple[str, Data]) -> str:
 
 def get_sorted_rows(
     datasets: list[Dataset], sort_by: str, reverse: bool
-) -> list[list[str]]:
+) -> list[list[Component | str | int | float | bool]]:
     """Collect and sort rows from all visible datasets for Table display."""
     records: list[tuple[str, Data]] = []
     for ds in datasets:
@@ -1256,6 +1255,7 @@ def get_sorted_rows(
             for pt in ds.datapoints:
                 records.append((ds.name, pt))
 
+    # Pass helper function to .sort(key=...) so Python sorts tuples by the chosen Data field
     if sort_by == "value":
         records.sort(key=get_record_value, reverse=reverse)
     elif sort_by == "date":
@@ -1263,7 +1263,7 @@ def get_sorted_rows(
     else:
         records.sort(key=get_record_name, reverse=reverse)
 
-    rows: list[list[str]] = []
+    rows: list[list[Component | str | int | float | bool]] = []
     for ds_name, pt in records:
         rows.append(
             [
@@ -1280,7 +1280,7 @@ def get_sorted_rows(
 
 def build_table_layer_toggles(datasets: list[Dataset]) -> Row:
     """Build inline toggle buttons for showing or hiding datasets in the table."""
-    buttons: list[PageContent] = []
+    buttons: list[Component] = []
     for idx in range(len(datasets)):
         ds = datasets[idx]
         if ds.toggled:
@@ -1339,7 +1339,9 @@ def data_table_page(state: State) -> Page:
         Button("Sort by Date", "sort_table", Argument("column", "date")),
         style_gap="8px",
     )
-    header_row = ["Dataset", "Station", "Value", "Date", "Latitude", "Longitude"]
+    header_row: list[Component | str | int | float | bool] = [
+        "Dataset", "Station", "Value", "Date", "Latitude", "Longitude"
+    ]
 
     if state.table_sort_reverse:
         order_label = "Desc"
@@ -1347,7 +1349,7 @@ def data_table_page(state: State) -> Page:
         order_label = "Asc"
 
     if len(rows) == 0:
-        table_display: PageContent = Paragraph(
+        table_display: Component = Paragraph(
             "No rows to display — toggle at least one dataset ON above."
         )
     else:
@@ -1504,7 +1506,7 @@ assert_equal(
 point_detail_page(test_state)
 
 handle_map_click(test_state, 39.6900, -75.7500)
-assert_equal(test_state.last_distance is not None, True)
+assert test_state.last_distance is not None
 assert_equal(test_state.last_distance.start, "Unique Station")
 assert_equal(test_state.last_distance.distance > 0, True)
 

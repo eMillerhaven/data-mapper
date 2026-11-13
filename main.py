@@ -419,7 +419,7 @@ def clear_selection(state: State) -> Page:
 
 @route
 def handle_map_click(
-    state: State, latitude: float, longitude: float
+    state: State, lat: float = 0.0, lon: float = 0.0
 ) -> Page:
     """Compute distance from the selected point to a clicked map spot."""
     if state.selected is None:
@@ -429,12 +429,12 @@ def handle_map_click(
         return index(state)
     ds = state.datasets[state.selected.dataset_index]
     pt = ds.datapoints[state.selected.data_index]
-    dist_km = haversine_km(pt.latitude, pt.longitude, latitude, longitude)
+    dist_km = haversine_km(pt.latitude, pt.longitude, lat, lon)
     end_label = (
         "Click ("
-        + str(round(latitude, 4))
+        + str(round(lat, 4))
         + ", "
-        + str(round(longitude, 4))
+        + str(round(lon, 4))
         + ")"
     )
     state.last_distance = DistanceQuery(pt.name, end_label, dist_km)

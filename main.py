@@ -1279,7 +1279,7 @@ def get_sorted_rows(
 
 
 def build_table_layer_toggles(datasets: list[Dataset]) -> Row:
-    """Build inline toggle buttons for showing or hiding datasets in the table."""
+    """Build wrapping toggle buttons for showing or hiding datasets in the table."""
     buttons: list[Component] = []
     for idx in range(len(datasets)):
         ds = datasets[idx]
@@ -1294,7 +1294,12 @@ def build_table_layer_toggles(datasets: list[Dataset]) -> Row:
                 Argument("dataset_idx", idx),
             )
         )
-    return Row(buttons, style_gap="8px")
+    return Row(
+        buttons,
+        style_gap="8px",
+        style_flex_wrap="wrap",
+        style_max_width="100%",
+    )
 
 
 @route
@@ -1573,3 +1578,4 @@ assert_equal(len(test_state.datasets), before_delete_count - 1)
 
 
 start_server(make_initial_state())
+
